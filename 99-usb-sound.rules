@@ -1,0 +1,1 @@
+DRIVERS=="snd-usb-audio", ACTION=="add", PROGRAM="/opt/bin/usb_port_no.sh %E{DEVPATH}", ATTR{id}="USBSOUND%c", RUN+="/opt/bin/dirty_hack_to_handle_usb_reenable.sh %c"

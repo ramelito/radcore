@@ -1,0 +1,21 @@
+KERNEL!="sd[a-z]1", GOTO="end_of_sdx1"
+ACTION=="add", ENV{mount_options}="relatime,noexec,nodev,nosuid"
+
+ACTION=="add", ENV{ID_FS_TYPE}=="vfat", ENV{mount_options}="$env{mount_options},utf8,uid=1000,gid=500,fmask=333,dmask=022"
+
+ACTION=="add", ENV{ID_FS_TYPE}=="ntfs", ENV{mount_options}="$env{mount_options},utf8,uid=1000,gid=500,umask=022"
+
+ACTION=="add", ENV{ID_FS_TYPE}=="ext2", ENV{mount_options}="$env{mount_options},errors=continue"
+
+ACTION=="add", ENV{ID_FS_TYPE}=="ext3", ENV{mount_options}="$env{mount_options},errors=continue,data=writeback"
+
+ACTION=="add", ENV{ID_FS_TYPE}=="ext4", ENV{mount_options}="$env{mount_options},errors=continue,discard,data=writeback"
+
+#if previously usb stick was attached let's stop recording on all scanners and umount it
+ACTION=="add", RUN+="/opt/bin/recorder.sh --usbdev /dev/%k --mntpnt /media/extdrv --mntopts $env{mount_options}"
+
+##if usb stick is removed you should stop recording on all scanners
+
+ACTION=="remove", RUN+="/opt/bin/recorder.sh --usbdev /dev/%k --mntpnt /media/extdrv"
+
+LABEL="end_of_sdx1"

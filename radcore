@@ -1,0 +1,400 @@
+#!/usr/bin/python
+#
+# RADCORE - RADio COmmunication REcorder
+# Copyright (C) 2014-2015 Anton Komarov
+#
+# This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License 
+# as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty 
+# of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with this program; 
+# if not, write to the Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+
+import os
+import sys
+import yaml
+import time
+import signal
+import jinja2
+import shutil
+import random
+import logging
+import argparse
+import requests
+import threading
+import subprocess
+
+from scanner.uniden import *
+
+audio_profiles={'high':{'rate':44100, 'format':'S16_LE', 'depth':2}, 
+		'mod':{'rate':16000, 'format':'S16_LE', 'depth':2},
+		'low':{'rate':8000, 'format':'S8', 'depth':1}}
+dsnoop={}
+icao_codes=[]
+metars={}
+
+def signal_handler(signal, frame):
+        sys.exit(0)
+
+def record_uniden(au,sc,te,ic,station):
+
+	try:	
+		dt=te['dir']
+		wt=te['wav']
+		et=te['egc']
+	except Exception:
+		logger.error('Missing vars in templates!')
+		return
+
+	try:
+		it=te['ice']
+	except Exception:
+		it=''
+		pass
+
+	try:
+		card=dsnoop[au['card']]
+		audio_format=au['format']
+		rate=audio_profiles[au['profile']]['rate']
+		fmt=audio_profiles[au['profile']]['format']
+		bits=8*audio_profiles[au['profile']]['depth']
+	except Exception:
+		logger.error('Missing vars in audio!')
+		return
+
+	try:
+		port=''.join(['/dev/scanners/',str(sc['port'])])
+		s=UnidenScanner(port,str(sc['speed']))
+	except Exception:
+		logger.error('Cant create Uniden instance. Vars missing?')
+		return
+
+	try:
+		s.set_volume(sc['volume'])
+		s.set_squelch(sc['squelch'])
+	except Exception:
+		logger.error('Volume or squelch failed to set up!')
+		pass
+
+	collect_uids=False
+	if 'collect_uids' in sc:
+		if sc['collect_uids']:
+			s.enter_program_mode()
+			s.settings.get_data()
+			s.settings.scanner_option['disp_uid']='1'
+			s.settings.scanner_option['disp_mode']='MODE2'
+			s.settings.set_data()
+			s.exit_program_mode()
+			s.push_key('press','scan')
+			collect_uids=True
+			uids=[]
+
+	a=None
+
+	sql=''
+	psql=''
+
+	while 1:
+		psql=sql
+
+		try:
+			cur=s.get_reception_status() # here we have timeout 10ms
+		except Exception:
+			continue
+
+		if type(cur) != type(dict()): continue
+
+		sql=cur['sql']
+
+		if sql=='1' and psql!=sql:
+			
+			yyyy=time.strftime('%Y')
+			mm=time.strftime('%m')
+			dd=time.strftime('%d')
+			HH=time.strftime('%H')
+			MM=time.strftime('%M')
+			SS=time.strftime('%S')
+			frq=cur['frq_tgid']
+			tvars={'system':cur['name1'], 'group':cur['name2'], 'channel':cur['name3'],
+					'year':yyyy, 'mon':mm, 'day':dd, 'hour':HH, 'min':MM, 'sec':SS,
+					'frqtgid':cur['frq_tgid']}
+			p=dt % tvars
+			f=wt % tvars
+
+			if cur['name2']=='' or cur['name3']=='':
+				p=et % tvars
+
+			try:
+				os.makedirs(p)
+			except OSError:
+				pass
+
+			fname=''.join([p,'/',f,'.',audio_format])
+
+			cmd=['sox','-q','-e','signed','-b',str(bits),'-c1','-t','alsa',card,'-r',str(rate),fname]
+			a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+			logger.info('%s: start recording with sox (PID=%s) to %s', sc['name'], a.pid, f)
+			try:
+				if ic['live']=='on':
+
+					meta=it % tvars
+					meta=meta.replace(' ', '+')
+					meta_update(meta,ic,station)
+			except Exception:
+				pass
+
+			continue
+
+		if (sql=='0' or sql=='') and psql!=sql and a:
+
+			logger.info('%s: SIGINT signal sent to sox with PID=%s', sc['name'], a.pid)
+			a.send_signal(signal.SIGINT)
+			#a.kill()
+			a=None
+
+			try:
+				if ic['live']=='on':
+					meta='SILENCE'
+					meta_update(meta,ic,station)
+			except Exception:
+				pass
+		
+			if collect_uids:
+				uids_fname=''.join([p,'/',f,'.txt'])
+				uids_str='\n'.join(uids)
+			        uids_file=open(uids_fname,'w')
+				uids_file.write('%s' % uids_str)
+			        uids_file.close()
+				uids=[]
+			continue
+
+		if sql=='1' and collect_uids:
+			try:
+				cur_status=s.get_current_status()
+				uids.append(cur_status['char'][2])
+			except Exception:
+				logger.error('%s: Cant append uid' % sc['name'])
+				pass
+
+def record_simple(au,sc,te,ic,station):
+
+	try:	
+		dt=te['dir']
+		wt=te['wav']
+	except Exception:
+		logger.error('Missing vars in templates!')
+		return
+
+	try:
+		card=dsnoop[au['card']]
+		audio_format=au['format']
+		rate=audio_profiles[au['profile']]['rate']
+		fmt=audio_profiles[au['profile']]['format']
+		bits=8*audio_profiles[au['profile']]['depth']
+	except Exception:
+		logger.error('Missing vars in audio!')
+		return
+
+	try:
+		it=te['ice']
+	except Exception:
+		it=''
+		pass
+
+	tmpname=''.join(['/tmp/',card,'.',audio_format])
+
+	while 1:
+
+		cmd=['sox','-q','-e','signed','-b',str(bits),'-c1','-t','alsa',card,
+			'-r',str(rate),tmpname,'silence','1','5','2%','1','0:00:01','2%']
+		a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+		a.communicate()
+		yyyy=time.strftime('%Y')
+		mm=time.strftime('%m')
+		dd=time.strftime('%d')
+		HH=time.strftime('%H')
+		MM=time.strftime('%M')
+		SS=time.strftime('%S')
+		tvars={'year':yyyy, 'mon':mm, 'day':dd, 'hour':HH, 'min':MM, 'sec':SS}
+
+		try:
+			p=dt % tvars
+			f=wt % tvars
+		except Exception:
+			logger.error('Template definitions are broken!')
+			return
+
+		try:
+			os.makedirs(p)
+		except OSError:
+			pass
+
+		fname=''.join([p,'/',f,'.',audio_format])
+
+		try:
+			shutil.move(tmpname,fname)
+		except Exception, e:
+			logger.error('Cant rename file: %s.' % e)
+			pass
+
+		try:
+			if ic['live']=='on': meta_update('',ic,station)
+		except Exception:
+			pass
+
+def record_aor():pass
+	#TODO AOR 8200 Mk3
+
+def broadcast(au,ic):
+		
+	tvars={}
+	templateLoader=jinja2.FileSystemLoader(searchpath='/')
+	templateEnv=jinja2.Environment(loader=templateLoader)
+	template=templateEnv.get_template('/opt/etc/darkice.conf.j2')
+	tvars.update(au)
+	tvars.update(ic)
+	tvars['rate']=audio_profiles[au['profile']]['rate']
+	tvars['depth']=8*int(audio_profiles[au['profile']]['depth'])
+	tvars['card']=dsnoop[au['card']]
+	config=template.render(tvars)
+	cfname=''.join(['/tmp/',tvars['host'],tvars['mount'],'.conf'])
+	cfile=open(cfname,'w')
+	cfile.write('%s' % config)
+	cfile.close()
+	cmd=['darkice','-c',cfname]
+	a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+
+def meta_update(meta,ic,station):
+
+	metar=''
+	try:
+		metar=metars[station]
+	except Exception:
+		pass
+
+	metaurl='http://'+ic['host']+':'+str(ic['port'])+'/admin/metadata?mount=/'+ic['mount']+'&mode=updinfo&song='
+	req=metaurl+meta+' '+metar
+	r=requests.get((req),auth=('source',ic['pass']))
+	if r.status_code != 200: print 'Icecast update failed!'	
+
+def get_metar(sc):
+
+	while 1:
+		url='http://weather.noaa.gov/pub/data/observations/metar/stations/'+str(sc)+'.TXT'
+		r=requests.get(url)
+		if r.status_code !=200: metars[sc]='NO METAR DATA'
+		metar=r.text.split('\n')
+		metars[sc]=metar[1]
+		time.sleep(1800)
+
+def asound_gen():
+
+	i=0
+	tvars=[]
+
+	ans=subprocess.check_output(["cat "+"/proc/asound/card*/id"],shell=True)
+	ans=ans.split('\n')
+
+	for card in ans:
+        	if card!='':
+                	tvars.append({'index':i, 'card':card, 'rand':random.randrange(1024,1048576)})
+	                dsnoop.update({card:'plug:dsnoop'+str(i)})
+        	        i=i+1
+
+	templateLoader=jinja2.FileSystemLoader(searchpath='/')
+	templateEnv=jinja2.Environment(loader=templateLoader)
+	template=templateEnv.get_template('/opt/etc/asound.conf.j2')
+	config=template.render(items=tvars)
+
+	cfname='/etc/asound.conf'
+	cfile=open(cfname,'w')
+	cfile.write('%s' % config)
+	cfile.close()
+
+class Whitelist(logging.Filter):
+    def __init__(self, *whitelist):
+        self.whitelist = [logging.Filter(name) for name in whitelist]
+
+    def filter(self, record):
+        return any(f.filter(record) for f in self.whitelist)
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', type=str, default='/opt/etc/radcore.yml')
+parser.add_argument('--log-file', type=str, default='/opt/var/log/radcore.log')
+args=parser.parse_args()
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+fh = logging.FileHandler(args.log_file)
+fh.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+for handler in logging.root.handlers:
+        handler.addFilter(Whitelist('root','scanner'))
+
+logger.info('Loading config file %s' % args.config)
+
+try:
+	instances=yaml.load(file(args.config,'r'))
+except Exception:
+	logger.critical('No config file found!')
+	sys.exit(0)
+
+asound_gen()
+
+for ins in instances:
+
+
+	icao_code='NONE'
+	
+	try:
+		au=ins['audio']
+		sc=ins['scanner']
+		te=ins['templates']
+	except Exception:
+		logger.error('Missing mandatory config lines!')
+		continue
+
+	try:
+		sc_name=sc['name']
+	except Exception:
+		logger.error('Scanner name MUST be assigned!')
+		continue
+
+	if 'icecast' in ins: ic=ins['icecast']
+	else: ic={}
+
+	if 'icao_code' in ins:
+		icao_code=ins['icao_code']
+		icao_codes.append(icao_code)
+
+	if 'time_zone' in ins:
+		os.environ['TZ']=ins['time_zone']
+		time.tzset()
+
+	rfunc=''.join(['record_',sc['type']])
+	rt = threading.Thread(target=eval(rfunc), args = (au,sc,te,ic,icao_code))
+	rt.daemon=True
+	rt.start()
+	logger.info('%s: recording thread started.' % sc_name)
+
+	if 'live' in ic:
+		if ic['live']=='on':
+			lt = threading.Thread(target=broadcast, args = (au,ic))
+			lt.daemon=True
+			lt.start()
+			logger.info('%s: broadcast thread started.' % sc_name)
+
+icao_codes=list(set(icao_codes))
+for icao_code in icao_codes:
+	mt = threading.Thread(target=get_metar, args=(icao_code,))
+	mt.daemon=True
+	mt.start()
+	logger.info('%s: fetching METAR for %s started.' % (sc_name,icao_code))
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.pause()

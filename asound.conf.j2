@@ -1,0 +1,13 @@
+{% for item in items -%}
+pcm.dsnoop{{ item.index }} {
+	type dsnoop
+	ipc_key {{ item.rand }}
+	slave {
+		pcm {
+			type hw
+			card {{ item.card }}
+			device 0
+		}
+	}
+}
+{% endfor %}

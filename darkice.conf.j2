@@ -1,0 +1,29 @@
+# this section describes general aspects of the live streaming session
+[general]
+duration        = 0        # duration of encoding, in seconds. 0 means forever
+bufferSecs      = 2        # size of internal slip buffer, in seconds
+reconnect       = yes      # reconnect to the server(s) if disconnected
+
+# this section describes the audio input that will be streamed
+[input]
+device          = {{ card }} # OSS DSP soundcard device for the audio input  
+sampleRate      = {{ rate }}       # sample rate in Hz. try 11025, 22050 or 44100
+bitsPerSample   = {{ depth }}      # bits per sample. try 16
+channel         = 1      # channels. 1 = mono, 2 = stereo
+
+# this section describes a streaming connection to an IceCast2 server
+# there may be up to 8 of these sections, named [icecast2-0] ... [icecast2-7]
+# these can be mixed with [icecast-x] and [shoutcast-x] sections
+[icecast2-0]
+bitrateMode     = cbr       # average bit rate
+format          = mp3       # vorbis    # format of the stream: ogg vorbis
+bitrate         = {{ mp3bitrate }}   # bitrate of the stream sent to the server
+server          = {{ host }} # host name of the server
+port            = {{ port }} # port of the IceCast2 server, usually 8000
+password        = {{ pass }} # source password to the IceCast2 server
+mountPoint      = {{ mount }}  # mount point of this stream on the IceCast2 server
+name            = {{ name }} # name of the stream
+description     = {{ desc }} # description of the stream
+url             = {{ url }}  # URL related to the stream
+genre           = {{ genre }}  # genre of the stream
+public          = {{ public }}  # advertise this stream?
