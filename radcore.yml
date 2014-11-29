@@ -16,13 +16,4 @@
    egc: '/home/ulab/public/scanner/p25/%(year)s%(mon)s%(day)s/FOUND TGIDS/%(frqtgid)s/%(hour)s'
    ice: '%(system)s %(group)s %(channel)s %(frqtgid)s'
   time_zone: 'Europe/Moscow'
-#  icao_code: UUEE #code to fetch METAR info
-#- scanner: {type: simple}
-#  audio: {card: 'USBSOUND32', profile: mod, format: mp3}
-#  icecast: {live: 'on', mp3bitrate: 32, host: amelito.com, port: 8001, pass: cHeSt57BAlKy, mount: olegso,
-#           name: Test Feed, desc: Test Feed Desc, url: 'http://amelito.com', genre: scanner, public: no}
-#  templates:
-#   dir: '/home/ulab/public/scanner/test/%(year)s%(mon)s%(day)s/%(hour)s'
-#   wav: '%(year)s-%(mon)s-%(day)s_%(hour)sh%(min)sm%(sec)ss'
-#  time_zone: 'Europe/Moscow'
-#  icao_code: UUEE #code to fetch METAR info
+  icao_code: UUEE #code to fetch METAR info
