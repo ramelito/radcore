@@ -80,7 +80,8 @@ def record_uniden(au,sc,te,ic,station):
 
 	collect_uids=False
 	if 'collect_uids' in sc:
-		if sc['collect_uids']:
+		if sc['collect_uids']=='on':
+			logger.info('%s: collecting uids is on, setting up scanner.' % sc['name'])
 			s.enter_program_mode()
 			s.settings.get_data()
 			s.settings.scanner_option['disp_uid']='1'
@@ -95,9 +96,12 @@ def record_uniden(au,sc,te,ic,station):
 
 	sql=''
 	psql=''
+	ft=''
+	pft=''
 
 	while 1:
 		psql=sql
+		pft=ft
 
 		try:
 			cur=s.get_reception_status() # here we have timeout 10ms
@@ -107,8 +111,13 @@ def record_uniden(au,sc,te,ic,station):
 		if type(cur) != type(dict()): continue
 
 		sql=cur['sql']
+		mute=cur['mute']
+		ft=cur['frq_tgid']
 
-		if sql=='1' and psql!=sql:
+		logger.debug('%s: SQL=%s, MUTE=%s, FT=%s', sc['name'], sql, mute, ft)
+
+		# transition '' -> 1
+		if sql=='1' and psql=='':
 			
 			yyyy=time.strftime('%Y')
 			mm=time.strftime('%m')
@@ -147,7 +156,10 @@ def record_uniden(au,sc,te,ic,station):
 
 			continue
 
-		if (sql=='0' or sql=='') and psql!=sql and a:
+		# transition 1 -> '', 0 -> ''
+		# to take into account time scanner waits before moving to next channel
+		# or during sql=1 frequency is changed we need stop recording and set sql to ''
+		if ((sql=='' and psql!=sql) or (sql==1 and pft!=ft)) and a:
 
 			logger.info('%s: SIGINT signal sent to sox with PID=%s', sc['name'], a.pid)
 			a.send_signal(signal.SIGINT)
@@ -164,10 +176,14 @@ def record_uniden(au,sc,te,ic,station):
 			if collect_uids:
 				uids_fname=''.join([p,'/',f,'.txt'])
 				uids_str='\n'.join(uids)
+				logger.info('%s: saving uids to %s' % (sc['name'],uids_fname))
 			        uids_file=open(uids_fname,'w')
 				uids_file.write('%s' % uids_str)
 			        uids_file.close()
 				uids=[]
+
+			sql=''
+
 			continue
 
 		if sql=='1' and collect_uids:
