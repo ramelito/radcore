@@ -35,7 +35,16 @@ dsnoop={}
 icao_codes=[]
 metars={}
 
+all_processes=[]
+
 def signal_handler(signal, frame):
+	for a in all_processes:
+		try:
+			a.kill()
+			logger.info('Killing process PID=%s' % a.pid)
+		except Exception:
+			logger.error('Cant kill process.')
+			pass			
         sys.exit(0)
 
 def record_uniden(au,sc,te,ic,station):
@@ -144,6 +153,7 @@ def record_uniden(au,sc,te,ic,station):
 
 			cmd=['sox','-q','-e','signed','-b',str(bits),'-c1','-t','alsa',card,'-r',str(rate),fname]
 			a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+			all_processes.append(a)
 			logger.info('%s: start recording with sox (PID=%s) to %s', sc['name'], a.pid, f)
 			try:
 				if ic['live']=='on':
@@ -164,6 +174,10 @@ def record_uniden(au,sc,te,ic,station):
 			logger.info('%s: SIGINT signal sent to sox with PID=%s', sc['name'], a.pid)
 			a.send_signal(signal.SIGINT)
 			#a.kill()
+			try:
+				all_processes.pop(all_processes.index(a))
+			except Exception:
+				pass
 			a=None
 
 			try:
@@ -226,6 +240,7 @@ def record_simple(au,sc,te,ic,station):
 		cmd=['sox','-q','-e','signed','-b',str(bits),'-c1','-t','alsa',card,
 			'-r',str(rate),tmpname,'silence','1','5','2%','1','0:00:01','2%']
 		a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+		all_processes.append(a)
 		a.communicate()
 		yyyy=time.strftime('%Y')
 		mm=time.strftime('%m')
@@ -234,6 +249,11 @@ def record_simple(au,sc,te,ic,station):
 		MM=time.strftime('%M')
 		SS=time.strftime('%S')
 		tvars={'year':yyyy, 'mon':mm, 'day':dd, 'hour':HH, 'min':MM, 'sec':SS}
+
+		try:
+			all_processes.pop(all_processes.index(a))
+		except Exception:
+			pass
 
 		try:
 			p=dt % tvars
@@ -281,6 +301,7 @@ def broadcast(au,ic):
 	cfile.close()
 	cmd=['darkice','-c',cfname]
 	a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	all_processes.append(a)
 
 def meta_update(meta,ic,station):
 
@@ -413,4 +434,5 @@ for icao_code in icao_codes:
 	logger.info('%s: fetching METAR for %s started.' % (sc_name,icao_code))
 
 signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 signal.pause()
