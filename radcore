@@ -36,6 +36,7 @@ icao_codes=[]
 metars={}
 
 all_processes=[]
+sox_term_proc=[]
 
 def signal_handler(signal, frame):
 	for a in all_processes:
@@ -154,7 +155,7 @@ def record_uniden(au,sc,te,ic,station):
 			cmd=['sox','-q','-e','signed','-b',str(bits),'-c1','-t','alsa',card,'-r',str(rate),fname]
 			a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 			all_processes.append(a)
-			logger.info('%s: start recording with sox (PID=%s) to %s', sc['name'], a.pid, f)
+			logger.info('%s: PID=%s recording to %s', sc['name'], a.pid, fname)
 			try:
 				if ic['live']=='on':
 
@@ -171,13 +172,17 @@ def record_uniden(au,sc,te,ic,station):
 		# or during sql=1 frequency is changed we need stop recording and set sql to ''
 		if ((sql=='' and psql!=sql) or (sql==1 and pft!=ft)) and a:
 
-			logger.info('%s: SIGINT signal sent to sox with PID=%s', sc['name'], a.pid)
-			a.send_signal(signal.SIGINT)
+			logger.info('%s: SIGTERM sent to PID=%s', sc['name'], a.pid)
+			a.terminate()
+			#a.send_signal(signal.SIGINT)
+			#logger.info('%s: process with PID=%s returns %s', sc['name'], a.pid, a.returncode)
 			#a.kill()
-			try:
-				all_processes.pop(all_processes.index(a))
-			except Exception:
-				pass
+			#try:
+			#	all_processes.pop(all_processes.index(a))
+			#except Exception:
+			#	pass
+			sox_term_proc.append(a)
+
 			a=None
 
 			try:
@@ -296,11 +301,21 @@ def broadcast(au,ic):
 	tvars['card']=dsnoop[au['card']]
 	config=template.render(tvars)
 	cfname=''.join(['/tmp/',tvars['host'],tvars['mount'],'.conf'])
-	cfile=open(cfname,'w')
-	cfile.write('%s' % config)
-	cfile.close()
+	try:
+		cfile=open(cfname,'w')
+		cfile.write('%s' % config)
+		cfile.close()
+	except Exception, e:
+		logger.error('%s: config file write failed %s' % (tvars['mount'],str(e)))
+		return
 	cmd=['darkice','-c',cfname]
-	a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	try:
+		a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	except Exception, e:
+		logger.error('%s: darkice start failed %s' % (tvars['mount'],str(e)))
+		a.kill()
+		return
+	logger.info('%s: darkice started with PID=%s' % (tvars['mount'],a.pid))
 	all_processes.append(a)
 
 def meta_update(meta,ic,station):
@@ -349,6 +364,37 @@ def asound_gen():
 	cfile=open(cfname,'w')
 	cfile.write('%s' % config)
 	cfile.close()
+
+def clean_term_sox():
+
+	while 1:
+		time.sleep(1)
+		for a in sox_term_proc:
+			a.poll()
+			res=a.returncode
+			logger.info('PID=%s exited with status %s.' % (a.pid,res))
+			if res==None:
+				time.sleep(2)
+				a.poll()
+				res=a.returncode
+				if res==None:
+					logger.info('PID=%s hangs?, try to kill it.' % a.pid)
+					try:
+						a.kill()
+					except Exception, e:
+						logger.error('Cannot kill PID=%s: %s' % (a.pid,str(e)))
+						pass
+					all_processes.pop(all_processes.index(a))
+					sox_term_proc.pop(sox_term_proc.index(a))
+				else:
+					logger.info('PID=%s exited with status %s.' % (a.pid,res))
+					all_processes.pop(all_processes.index(a))
+					sox_term_proc.pop(sox_term_proc.index(a))
+			else:
+				all_processes.pop(all_processes.index(a))
+				sox_term_proc.pop(sox_term_proc.index(a))
+				
+			
 
 class Whitelist(logging.Filter):
     def __init__(self, *whitelist):
@@ -432,6 +478,11 @@ for icao_code in icao_codes:
 	mt.daemon=True
 	mt.start()
 	logger.info('%s: fetching METAR for %s started.' % (sc_name,icao_code))
+
+stpt = threading.Thread(target=clean_term_sox)
+stpt.daemon=True
+stpt.start()
+logger.info('sox terminated process cleaner started.')
 
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
