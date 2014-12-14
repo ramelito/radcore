@@ -116,9 +116,12 @@ def record_uniden(au,sc,te,ic,station):
 		try:
 			cur=s.get_reception_status() # here we have timeout 10ms
 		except Exception:
+			logger.error('%s: got corrupted reception status.' % sc['name'])
 			continue
 
-		if type(cur) != type(dict()): continue
+		if type(cur) != type(dict()):
+			logger.error('%s: returned status but it is not dictionary.' % sc['name'])
+			continue
 
 		sql=cur['sql']
 		mute=cur['mute']
@@ -153,9 +156,13 @@ def record_uniden(au,sc,te,ic,station):
 			fname=''.join([p,'/',f,'.',audio_format])
 
 			cmd=['sox','-q','-e','signed','-b',str(bits),'-c1','-t','alsa',card,'-r',str(rate),fname]
-			a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-			all_processes.append(a)
-			logger.info('%s: PID=%s recording to %s', sc['name'], a.pid, fname)
+			try:
+				a = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+				all_processes.append(a)
+				logger.info('%s: PID=%s recording to %s', sc['name'], a.pid, fname)
+			except Exception, e:
+				logger.error('%s: subproccess failed to start %s' % (sc['name'],str(e)))
+
 			try:
 				if ic['live']=='on':
 
@@ -328,8 +335,12 @@ def meta_update(meta,ic,station):
 
 	metaurl='http://'+ic['host']+':'+str(ic['port'])+'/admin/metadata?mount=/'+ic['mount']+'&mode=updinfo&song='
 	req=metaurl+meta+' '+metar
-	r=requests.get((req),auth=('source',ic['pass']))
-	if r.status_code != 200: print 'Icecast update failed!'	
+	try:
+		r=requests.get((req),auth=('source',ic['pass']))
+		if r.status_code != 200: logger.error('%s: cannot update meta.' % ic['mount'])
+	except Exception, e:
+		logger.error('%s: requests error %s' % (ic['mount'],str(e)))
+		pass
 
 def get_metar(sc):
 
@@ -431,7 +442,6 @@ asound_gen()
 
 for ins in instances:
 
-
 	icao_code='NONE'
 	
 	try:
@@ -462,15 +472,25 @@ for ins in instances:
 	rfunc=''.join(['record_',sc['type']])
 	rt = threading.Thread(target=eval(rfunc), args = (au,sc,te,ic,icao_code))
 	rt.daemon=True
-	rt.start()
-	logger.info('%s: recording thread started.' % sc_name)
+	try:
+		rt.start()
+		logger.info('%s: recording thread started.' % sc_name)
+	except Exception, e:
+		logger.error('%s: recording thread failed to start %s' % (sc_name,str(e)))
+		pass
 
 	if 'live' in ic:
 		if ic['live']=='on':
 			lt = threading.Thread(target=broadcast, args = (au,ic))
 			lt.daemon=True
-			lt.start()
-			logger.info('%s: broadcast thread started.' % sc_name)
+			try:
+				lt.start()
+				logger.info('%s: broadcast thread started.' % sc_name)
+			except Exception, e:
+				logger.error('%s: broadcast thread failed to start %s' % (sc_name,str(e)))
+				pass
+				
+			
 
 icao_codes=list(set(icao_codes))
 for icao_code in icao_codes:
