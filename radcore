@@ -37,6 +37,7 @@ metars={}
 
 all_processes=[]
 sox_term_proc=[]
+sox_threads=[]
 
 def signal_handler(signal, frame):
 	for a in all_processes:
@@ -336,10 +337,10 @@ def meta_update(meta,ic,station):
 	metaurl='http://'+ic['host']+':'+str(ic['port'])+'/admin/metadata?mount=/'+ic['mount']+'&mode=updinfo&song='
 	req=metaurl+meta+' '+metar
 	try:
-		r=requests.get((req),auth=('source',ic['pass']))
-		if r.status_code != 200: logger.error('%s: cannot update meta.' % ic['mount'])
+		r=requests.get((req),auth=('source',ic['pass']),timeout=0.1)
+		#if r.status_code != 200: logger.error('%s: cannot update meta.' % ic['mount'])
 	except Exception, e:
-		logger.error('%s: requests error %s' % (ic['mount'],str(e)))
+		#logger.error('%s: requests error %s' % (ic['mount'],str(e)))
 		pass
 
 def get_metar(sc):
@@ -406,6 +407,15 @@ def clean_term_sox():
 				sox_term_proc.pop(sox_term_proc.index(a))
 				
 			
+def monitor_sox_threads():
+
+	while 1:
+		for t in sox_threads:
+			if not t.isAlive(): logger.error('thread is dead.')
+			else: logger.info('thread is ok.')
+		time.sleep(60)
+		
+
 
 class Whitelist(logging.Filter):
     def __init__(self, *whitelist):
@@ -475,6 +485,7 @@ for ins in instances:
 	try:
 		rt.start()
 		logger.info('%s: recording thread started.' % sc_name)
+		sox_threads.append(rt)
 	except Exception, e:
 		logger.error('%s: recording thread failed to start %s' % (sc_name,str(e)))
 		pass
@@ -503,6 +514,11 @@ stpt = threading.Thread(target=clean_term_sox)
 stpt.daemon=True
 stpt.start()
 logger.info('sox terminated process cleaner started.')
+
+mst = threading.Thread(target=monitor_sox_threads)
+mst.daemon=True
+mst.start()
+logger.info('sox threads monitor started.')
 
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
