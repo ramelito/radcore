@@ -23,7 +23,27 @@ insserv radcore.sh
 
 To operate with your scanners you need to create a config file in YAML.
 For more details look through radcore.yml.example config file.
-It is self explanatory.
+```yml
+---
+- scanner: {name: srch, type: uniden, port: 3110, speed: 9600, volume: 9, squelch: 5}
+  audio: {card: 'Intel', profile: mod, format: mp3}
+  templates:
+   dir: '/scanner_audio/%(year)s%(mon)s%(day)s/%(system)s/%(group)s/%(channel)s/%(hour)s'
+   wav: '%(year)s-%(mon)s-%(day)s_%(hour)sh%(min)sm%(sec)ss_%(frqtgid)s_MHz'
+   egc: '/scanner_audio/%(year)s%(mon)s%(day)s/%(system)s/%(frqtgid)s/%(hour)s'
+  time_zone: 'Europe/Moscow'
+- scanner: {name: apco, type: uniden, port: 2110, speed: 57600, volume: 3, squelch: 5, collect_uids: 'on'}
+  audio: {card: 'USBSOUND32', profile: mod, format: mp3}
+  icecast: {live: 'on', mp3bitrate: 32, host: example.com, port: 8001, pass: xxxxxxx, mount: xxxxxx,
+           name: Test Feed, desc: Test Feed Desc, url: 'http://example.com', genre: scanner, public: no}
+  templates:
+   dir: '/home/ulab/public/scanner/p25/%(year)s%(mon)s%(day)s/%(group)s/%(channel)s/%(hour)s'
+   wav: '%(year)s-%(mon)s-%(day)s_%(hour)sh%(min)sm%(sec)ss_%(frqtgid)s_%(system)s'
+   egc: '/home/ulab/public/scanner/p25/%(year)s%(mon)s%(day)s/FOUND TGIDS/%(frqtgid)s/%(hour)s'
+   ice: '%(system)s %(group)s %(channel)s %(frqtgid)s'
+  time_zone: 'Europe/Moscow'
+  icao_code: UUEE #code to fetch METAR info
+  ```
 
 Radcore can be used with scanner w/o remote control, so called simple scanner.
 And software is compatible with Uniden scanners (RS-232 remote control).
