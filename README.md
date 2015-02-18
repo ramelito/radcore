@@ -1,7 +1,8 @@
+## Description.
 RADCORE is RADio COmmunication REcorder software, 
 which will help you to get more from your scanner.
 
-Installation.
+## Installation.
 
 Before radcore usage you have to install following packages:
 	- sox and all fmt libs
@@ -13,10 +14,12 @@ To install radcore run ./install.sh with sudo.
 
 To run radcore upon system startup use radcore.sh script.
 E.g. for Debian: 
+```bash
 cp -v radcore.sh /etc/init.d/
 insserv radcore.sh
+```
 
-Usage.
+## Usage.
 
 To operate with your scanners you need to create a config file in YAML.
 For more details look through radcore.yml.example config file.
