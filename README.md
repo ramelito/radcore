@@ -5,10 +5,10 @@ which will help you to get more from your scanner.
 ## Installation.
 
 Before radcore usage you have to install following packages:
-	- sox and all fmt libs
-	- darkice-full from debmultimedia
-	- additional python modules - jinja2, argparse and requests.
-	- uniden_api from git
+- sudo apt-get install sox libsox-fmt-all
+- sudo apt-get install darkice (multiverse for ubuntu)
+- sudo apt-get install python-jinja2 python-requests python-argparse
+- git clone https://github.com/ramelito/uniden-api; cd uniden-api; sudo ./setup.py install
 
 To install radcore run ./install.sh with sudo.
 
