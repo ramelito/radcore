@@ -1,4 +1,5 @@
 KERNELS=="ttyUSB[0-9]", DRIVERS=="pl2303", ACTION=="add", PROGRAM="/opt/bin/usb_port_no.sh %E{DEVPATH}", SYMLINK+="scanners/%c"
+KERNELS=="ttyUSB[0-9]", DRIVERS=="cp201x", ACTION=="add", PROGRAM="/opt/bin/usb_port_no.sh %E{DEVPATH}", SYMLINK+="scanners/%c"
 KERNELS=="ttyUSB[0-9]", DRIVERS=="option1", ACTION=="add", PROGRAM="/opt/bin/usb_port_no.sh %E{DEVPATH}", SYMLINK+="modems/%c", RUN+="/opt/bin/recorder.sh --modem-up --mport %c --misp megafon"
 KERNELS=="ttyUSB[0-9]", DRIVERS=="mos7840", ACTION=="add", PROGRAM="/opt/bin/usb_port_no.sh %E{DEVPATH} %s{port_number}", SYMLINK+="scanners/%c"
 KERNELS=="ttyUSB[0-9]", DRIVERS=="ftdi_sio", ACTION=="add", PROGRAM="/opt/bin/usb_port_no.sh %E{DEVPATH} %s{port_number}", SYMLINK+="scanners/%c"
