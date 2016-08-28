@@ -5,6 +5,7 @@ which will help you to get more from your scanner.
 ## Installation.
 
 Before radcore usage you have to install following packages:
+- sudo apt-get install alsa-base alsa-utils
 - sudo apt-get install python-yaml python-serial 
 - sudo apt-get install sox libsox-fmt-all
 - sudo apt-get install darkice (multiverse for ubuntu)
